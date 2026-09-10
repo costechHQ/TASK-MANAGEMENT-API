@@ -1,6 +1,6 @@
-from fastapi import Header, HTTPException, Query
 from typing import Annotated
 
+from fastapi import Header, HTTPException, Query
 
 API_KEY = "task-secret-123"
 
