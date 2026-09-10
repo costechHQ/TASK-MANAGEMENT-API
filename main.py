@@ -1,5 +1,7 @@
 from fastapi import FastAPI
 from database import create_db_and_tables
+from fastapi import Depends, FastAPI
+from dependencies import require_api_key
 
 app =  FastAPI(title="Task Management API")
 
@@ -12,3 +14,9 @@ async def on_startup():
 @app.get("/")
 async def home():
     return {"message": "Task Management API"}
+
+@app.post("/test")
+async def test_write_operation(
+    api_key: str = Depends(require_api_key)
+):
+    return {"message": "API key accepted"}
