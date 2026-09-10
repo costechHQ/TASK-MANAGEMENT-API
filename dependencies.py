@@ -1,4 +1,4 @@
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Query
 from typing import Annotated
 
 
@@ -14,3 +14,16 @@ def require_api_key(
         detail="Invalid or missing API key"
     )
     return api_key
+
+class PaginationParams:
+    def __init__(
+        self,
+        page: int = Query(1, ge=1),
+        limit: int = Query(10, ge=1, le=100),
+    ):
+        self.page = page
+        self.limit = limit
+
+    @property
+    def offset(self):
+        return (self.page - 1) * self.limit
