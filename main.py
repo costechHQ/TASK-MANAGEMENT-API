@@ -1,7 +1,8 @@
-from fastapi import FastAPI
-from database import create_db_and_tables
-from fastapi import Depends, FastAPI
+from fastapi import Depends, FastAPI, HTTPException, status
+from sqlmodel import Session, select
+from database import create_db_and_tables, get_session
 from dependencies import require_api_key, PaginationParams
+from model import User, UserCreate, UserPublic
 
 app =  FastAPI(title="Task Management API")
 
@@ -15,18 +16,28 @@ async def on_startup():
 async def home():
     return {"message": "Task Management API"}
 
-@app.post("/test")
-async def test_write_operation(
-    api_key: str = Depends(require_api_key)
+@app.post("/users", response_model=UserPublic, status_code=status.HTTP_201_CREATED,)
+async def create_user(
+    user: UserCreate,
+    session: Session = Depends(get_session),
+    api_key: str = Depends(require_api_key),
 ):
-    return {"message": "API key accepted"}
+    db_user = User.model_validate(user)
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+    return db_user
 
-@app.get("/test-pagination")
-async def test_pagination(
-    pagination: PaginationParams = Depends(PaginationParams)
+@app.get("/users", response_model=list[UserPublic])
+def get_users(
+    session: Session = Depends(get_session),
+    pagination: PaginationParams = Depends(PaginationParams),
 ):
-    return {
-        "page": pagination.page,
-        "limit": pagination.limit,
-        "offset": pagination.offset,
-    }
+    statement = (
+        select(User)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+    )
+    users = session.exec(statement).all()
+    return users
+

@@ -24,7 +24,7 @@ class TaskBase(SQLModel):
 class Task(TaskBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     status: str = "todo"
-    user_id: int = Field(foreign_key="user,id")
+    user_id: int = Field(foreign_key="user.id")
 
 
 class TaskCreate(TaskBase):
