@@ -1,4 +1,4 @@
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 from sqlmodel import Session, select
 from database import create_db_and_tables, get_session
 from dependencies import require_api_key, PaginationParams
@@ -13,6 +13,14 @@ app =  FastAPI(title="Task Management API")
 @app.on_event("startup")
 async def on_startup():
     create_db_and_tables()
+
+
+def completion_report(task_id: int, title: str, user_id: int):
+    with open("complete_reports.log", "a", encoding="utf-8") as file:
+        file.write(
+            f"Task {task_id} '{title}' completed by user {user_id}\n"
+        )
+
 
 @app.get("/")
 async def home():
@@ -76,8 +84,9 @@ async def get_tasks(
 async def update_task(
     task_id: int,
     task_update: TaskUpdate,
+    background_tasks: BackgroundTasks,
     session: Session = Depends(get_session),
-    api_key: str = Depends(require_api_key)
+    api_key: str = Depends(require_api_key),
 ):
     task = session.get(Task, task_id)
 
@@ -87,6 +96,8 @@ async def update_task(
             detail="Task not found",
         )
 
+    was_done = task.status == "done"
+
     task_data = task_update.model_dump(exclude_unset=True)
 
     for key, value in task_data.items():
@@ -95,6 +106,14 @@ async def update_task(
     session.add(task)
     session.commit()
     session.refresh(task)
+
+    if task.status == "done" and not was_done:
+        background_tasks.add_task(
+            completion_report,
+            task.id,
+            task.title,
+            task.user_id,
+        )
 
     return task
 
