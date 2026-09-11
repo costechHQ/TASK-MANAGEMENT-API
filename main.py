@@ -1,13 +1,22 @@
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, status
 from sqlmodel import Session, select
+
 from database import create_db_and_tables, get_session
 from dependencies import require_api_key, PaginationParams
-from model import User, UserCreate, UserPublic, Task, TaskCreate, TaskPublic, TaskUpdate
+
+from model import (
+    User,
+    UserCreate,
+    UserPublic,
+    Task,
+    TaskCreate,
+    TaskPublic,
+    TaskUpdate,
+    TaskStatus,
+)
 
 
-
-
-app =  FastAPI(title="Task Management API")
+app = FastAPI(title="Task Management API")
 
 
 @app.on_event("startup")
@@ -25,6 +34,50 @@ def completion_report(task_id: int, title: str, user_id: int):
 @app.get("/")
 async def home():
     return {"message": "Task Management API"}
+
+
+# -------------------------
+# USER ENDPOINTS
+# -------------------------
+
+@app.post(
+    "/users",
+    response_model=UserPublic,
+    status_code=status.HTTP_201_CREATED,
+)
+async def create_user(
+    user: UserCreate,
+    session: Session = Depends(get_session),
+    api_key: str = Depends(require_api_key),
+):
+    db_user = User.model_validate(user)
+
+    session.add(db_user)
+    session.commit()
+    session.refresh(db_user)
+
+    return db_user
+
+
+@app.get("/users", response_model=list[UserPublic])
+def get_users(
+    session: Session = Depends(get_session),
+    pagination: PaginationParams = Depends(PaginationParams),
+):
+    statement = (
+        select(User)
+        .offset(pagination.offset)
+        .limit(pagination.limit)
+    )
+
+    users = session.exec(statement).all()
+
+    return users
+
+
+# -------------------------
+# TASK ENDPOINTS
+# -------------------------
 
 @app.post(
     "/tasks",
@@ -52,18 +105,6 @@ async def create_task(
 
     return db_task
 
-@app.get("/users", response_model=list[UserPublic])
-def get_users(
-    session: Session = Depends(get_session),
-    pagination: PaginationParams = Depends(PaginationParams),
-):
-    statement = (
-        select(User)
-        .offset(pagination.offset)
-        .limit(pagination.limit)
-    )
-    users = session.exec(statement).all()
-    return users
 
 @app.get("/tasks", response_model=list[TaskPublic])
 async def get_tasks(
@@ -79,6 +120,7 @@ async def get_tasks(
     tasks = session.exec(statement).all()
 
     return tasks
+
 
 @app.put("/tasks/{task_id}", response_model=TaskPublic)
 async def update_task(
@@ -96,7 +138,7 @@ async def update_task(
             detail="Task not found",
         )
 
-    was_done = task.status == "done"
+    was_done = task.status == TaskStatus.DONE
 
     task_data = task_update.model_dump(exclude_unset=True)
 
@@ -107,7 +149,7 @@ async def update_task(
     session.commit()
     session.refresh(task)
 
-    if task.status == "done" and not was_done:
+    if task.status == TaskStatus.DONE and not was_done:
         background_tasks.add_task(
             completion_report,
             task.id,
@@ -117,7 +159,11 @@ async def update_task(
 
     return task
 
-@app.delete("/tasks/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+
+@app.delete(
+    "/tasks/{task_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
 async def delete_task(
     task_id: int,
     session: Session = Depends(get_session),
